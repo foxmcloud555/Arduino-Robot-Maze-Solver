@@ -23,8 +23,11 @@ ZumoMotors motors;
 int incomingByte;  
 bool autoPilot = false;
 bool inRoom = false;
-int rooms[100];
+int rooms[100][2];
+int roomNumber;
 int pingCountDown = 0;
+int corridorObjects[100]; //number held indicates what room was last visited.
+int objectsOutsideRooms = 0;
 
 #define NUM_SENSORS 6
 unsigned int sensor_values[NUM_SENSORS];
@@ -40,6 +43,7 @@ void setup()
   pinMode(echoPin, INPUT);
   // initialize serial communication:
   Serial.begin(9600);
+  roomNumber = 0;
   
   // uncomment one or both of the following lines if your motors' directions need to be flipped
   //motors.flipLeftMotor(true);
@@ -53,25 +57,23 @@ void loop()
   ////////////////////////////////////////////////////////
   if (pingCountDown > 32000)
   {
-  pingUltraSound();
+  int objectDistance = pingUltraSound();
+  if (objectDistance < 10)
+    {
+   if (inRoom == true)
+     {
+       rooms[roomNumber][0] = 1 ;//rooms with a 1 mean an object was found
+       Serial.print("I found an object in room: ");
+       Serial.print(roomNumber);
+     } 
+     else
+         {
+     corridorObjects[objectsOutsideRooms] = roomNumber;
+         }
+    }
   }
   pingCountDown++;
-//    long duration, distance;
-//  digitalWrite(trigPin, LOW);  // Added this line
-//  delayMicroseconds(2); // Added this line
-//  digitalWrite(trigPin, HIGH);
-////  delayMicroseconds(1000); - Removed this line
-//  delayMicroseconds(10); // Added this line
-//  digitalWrite(trigPin, LOW);
-//  duration = pulseIn(echoPin, HIGH);
-//  distance = (duration/2) / 29.1;
-//  if (distance >= 100 || distance <= 0){
-//   // Serial.println("");
-//  }
-//  else {
-//    Serial.print(distance);
-//    Serial.println(" cm");
-//  }
+
   ////////////////////////////////////////////////////////
   //ultrasound functions
   ////////////////////////////////////////////////////////
@@ -85,26 +87,26 @@ void loop()
   int speed = 100;
   // run left motor forward
    // see if there's incoming serial data:
-  if (Serial.available() > 0) {
-    // read the oldest byte in the serial buffer:
+  if (Serial.available() > 0) { 
+    
     incomingByte = Serial.read();
-    // if it's a capital H (ASCII 72), turn on the LED:
     
     switch (incomingByte)
 {
   case 'H':
     digitalWrite(LED_PIN, HIGH);
+     
   break;
   case 'L':
     digitalWrite(LED_PIN, LOW);
    break;
    case 'A':
-      motors.setRightSpeed(speed * 2);
-      motors.setLeftSpeed(speed * -2);
+      motors.setRightSpeed(speed * 1);
+      motors.setLeftSpeed(speed * -1);
    break;
    case 'D':
-      motors.setRightSpeed(speed * 2);
-      motors.setLeftSpeed(speed * -2);
+      motors.setLeftSpeed(speed * 1);
+      motors.setRightSpeed(speed * -1);
    break;
    case 'W':
       motors.setRightSpeed(speed);
@@ -114,17 +116,37 @@ void loop()
       motors.setRightSpeed(speed * -1);
       motors.setLeftSpeed(speed * -1);
    break;
+   case 32:
    case 'Q':
+   case 'q':
       motors.setRightSpeed(0);
       motors.setLeftSpeed(0);
    break;
    case 'R':
       Serial.print("entering room");
+      roomNumber++;
    break;
    case 'C':
       autoPilot = true;
       inRoom = false;
    break;
+   case 91:
+     rooms[roomNumber][1] = 0;
+    break;
+    case 93:
+     rooms[roomNumber][1] = 1;
+    break;
+    case 'P':
+      Serial.print("Objects found in room(s): ");
+      for (int i = 0; i <= roomNumber; i++){
+        if (rooms[i][0] == 1)
+        {
+          Serial.print(i);
+         Serial.print(',');
+        }
+      }
+      break;
+      
 }
     Serial.print("I received: ");
     Serial.println(incomingByte, DEC);
@@ -143,17 +165,7 @@ void loop()
   {
   sensors.read(sensor_values);
   
-   if (Serial.available() > 0) {
-    // read the oldest byte in the serial buffer:
-    incomingByte = Serial.read();
-    
-    if (incomingByte == 'R') {
-     
-      Serial.print("entering room");
-      inRoom = true;
-      autoPilot = false;
-    }
-   }
+
   
   if ((sensor_values[0] > QTR_THRESHOLD) && (sensor_values[5] < QTR_THRESHOLD))
   { // if leftmost sensor detects line, reverse and turn to the right
@@ -162,7 +174,7 @@ void loop()
     motors.setSpeeds(TURN_SPEED, -TURN_SPEED);
     delay(TURN_DURATION);
     motors.setSpeeds(FORWARD_SPEED, FORWARD_SPEED);
-    Serial.print("left hand wall");
+    //Serial.print("left hand wall");
   }
   else if ((sensor_values[5] > QTR_THRESHOLD) && (sensor_values[0] < QTR_THRESHOLD))
   {
@@ -172,7 +184,7 @@ void loop()
     motors.setSpeeds(-TURN_SPEED, TURN_SPEED);
     delay(TURN_DURATION);
     motors.setSpeeds(FORWARD_SPEED, FORWARD_SPEED);
-    Serial.print("right hand wall");
+   // Serial.print("right hand wall");
   }
   else if ((sensor_values[0] > QTR_THRESHOLD) &&(sensor_values[5] > QTR_THRESHOLD))
   {
@@ -185,8 +197,24 @@ void loop()
   {
     // otherwise, go straight
     motors.setSpeeds(FORWARD_SPEED, FORWARD_SPEED);
-    Serial.print("going straight");
+    //Serial.println("going straight");
   }
+  if (Serial.available() > 0) {
+    // read the oldest byte in the serial buffer:
+    incomingByte = Serial.read();
+    
+    if (incomingByte == 'R') {
+     autoPilot = false;
+      Serial.println("entering room");
+      roomNumber++;
+      inRoom = true;
+      motors.setSpeeds(0,0);
+    }
+    if (incomingByte == 32) {
+     autoPilot = false;
+     motors.setSpeeds(0,0);
+    }
+   }
   }
   ////////////////////////////////////////////////////////
   //Auto pilot
@@ -194,7 +222,7 @@ void loop()
   
 }
 
-void pingUltraSound()
+long pingUltraSound()
 {
   long duration, distance;
   digitalWrite(trigPin, LOW);  // Added this line
@@ -205,13 +233,16 @@ void pingUltraSound()
   digitalWrite(trigPin, LOW);
   duration = pulseIn(echoPin, HIGH);
   distance = (duration/2) / 29.1;
-  if (distance >= 100 || distance <= 0){
+  if (distance >= 10 || distance <= 0){
    // Serial.println("");
+   
   }
   else {
+    
     Serial.print(distance);
     Serial.println(" cm");
   }
   pingCountDown = 0;
+  return distance;
 }
   
