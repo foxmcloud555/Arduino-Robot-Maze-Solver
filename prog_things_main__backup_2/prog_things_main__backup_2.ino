@@ -7,7 +7,7 @@
 
 #define LED_PIN 13
 #define trigPin 12
-#define echoPin 5
+#define echoPin 2
 
 //sensor sensitivity
 #define QTR_THRESHOLD  300 // microseconds
@@ -37,13 +37,44 @@ ZumoReflectanceSensorArray sensors(QTR_NO_EMITTER_PIN);
 
 void setup()
 {
+   sensors.init();
+
+   //delay(500);
+  
   pinMode(LED_PIN, OUTPUT);
+  Serial.begin(9600);
+  
+  Serial.println("calibration start");
+  buzzer.playNote(NOTE_G(3), 200, 15);
+   unsigned long startTime = millis();
+  while(millis() - startTime < 10000)   // make the calibration take 10 seconds
+  {
+    sensors.calibrate();
+  }
+  Serial.println("calibration end");
+  buzzer.playNote(NOTE_G(4), 500, 15); 
+  
   // set up ultrasound module
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
   // initialize serial communication:
-  Serial.begin(9600);
+  
   roomNumber = 0;
+   for (byte i = 0; i < NUM_SENSORS; i++)
+  {
+    Serial.print(sensors.calibratedMinimumOn[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
+
+   for (byte i = 0; i < NUM_SENSORS; i++)
+  {
+    Serial.print(sensors.calibratedMaximumOn[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
+  Serial.println();
+  delay(1000);
   
   // uncomment one or both of the following lines if your motors' directions need to be flipped
   //motors.flipLeftMotor(true);
